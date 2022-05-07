@@ -56,9 +56,30 @@ let current_date_http_format =
 
 
 module Request : sig
-  type http_request
-  type http_method
-  type parse_error
+  type http_method = 
+    | CONNECT
+    | DELETE
+    | GET
+    | HEAD
+    | OPTIONS
+    | POST
+    | PUT
+  ;;
+  type http_request = {
+    status_line : (http_method * string * http_protocol);
+    headers : (string*string) list;
+    body : bytes
+  }
+  
+  type parse_error =
+  | Request_Wrong_Format_Error
+  | Status_Line_Missing_Error
+  | Status_line_Wrong_Format_Error
+  | Unknown_Http_Method_Error
+  | Unsupported_Portocol_Error
+  | Double_CRLF_Split_Error
+  | No_Content
+;;
 
   val string_of_http_method: http_method -> string
   val http_request_of_request_bytes_result: bytes -> (http_request, parse_error) result
