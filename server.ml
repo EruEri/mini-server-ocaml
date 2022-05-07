@@ -14,8 +14,7 @@ let local_ip =
   | Invalid_argument (s) -> prerr_endline s; None
 ;;
 
-external read_response: file_descr -> unit -> bytes = "read_response"
-      
+external read_response: file_descr -> unit -> bytes = "caml_read_response"
 
 let default_response socket () =
   let file = open_in_bin "index.html" in

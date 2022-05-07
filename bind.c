@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 
 
-CAMLprim value read_response(value file_descriptor, value unit){
+CAMLprim value caml_read_response(value file_descriptor, value unit){
     int fd = Int_val(file_descriptor);
     printf("file descriptor: %d\n", fd);
     size_t read_cst = 1024;
