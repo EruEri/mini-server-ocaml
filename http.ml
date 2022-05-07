@@ -55,7 +55,10 @@ let current_date_http_format =
 
 
 
-module Request : sig
+module rec Request : sig
+
+  type http_request
+
   type http_method = 
     | CONNECT
     | DELETE
@@ -65,11 +68,6 @@ module Request : sig
     | POST
     | PUT
   ;;
-  type http_request = {
-    status_line : (http_method * string * http_protocol);
-    headers : (string*string) list;
-    body : bytes
-  }
   
   type parse_error =
   | Request_Wrong_Format_Error
@@ -86,6 +84,9 @@ module Request : sig
   val http_method_of_string: string -> http_method
   val http_method_of_string_opt: string -> http_method option
   val string_of_http_request: http_request -> string
+
+  val http_method: http_request -> http_method
+  val path: http_request -> string
 end
 = struct
 
@@ -116,6 +117,29 @@ end
   ;;
   let crlf_regex = Str.regexp "\r\n";;
   let double_crlf_regex = Str.regexp "\r\n\r\n";;
+  let http_method request = let (meth, _, _) = request.status_line in meth
+  let path request = let _, path, _ = request.status_line in path
+  let get_parameter_opt (parameter: string) (route: Router.route) request = 
+    let raw_components = request |> Request.path |> String.split_on_char '/' in
+    let route_components = route |> Router.to_route_components in
+    if List.compare_lengths raw_components route_components <> 0 then None
+    else
+      let mapped_components = raw_components 
+      |> List.mapi ( fun i raw_component -> 
+        let route_component = List.nth route_components i in 
+        match route_component with
+        | Router.Const c -> if c <> raw_component then (None, raw_component) else (Some( Router.Const c), raw_component)
+        | _ -> (Some( route_component), raw_component)
+        )
+      in
+      if mapped_components 
+        |> List.exists (fun (component_opt, _) -> component_opt |> Option.is_none )
+      then None
+      else
+        mapped_components
+        |> List.map (fun (component_opt, raw_components) -> component_opt |> Option.get, raw_components )
+        |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = raw_component then Some(raw_component) else None | _ -> None)
+  ;;
 
   let http_method_of_string = function
     | "CONNECT" -> CONNECT
@@ -212,7 +236,68 @@ end
     end
   ;;
 end
+and Router : sig
+  type route_component = 
+    | Const of string
+    | Parameter of string
+    | Any
+    
+  type route
 
+  type router
+
+  type route_handler
+
+  val make_router: router
+  val make_route: route_component list -> route
+  val add_route: route_handler -> router -> router
+
+  val to_route_components: route -> route_component list
+  val connect: route -> (Request.http_request -> bytes) -> route_handler
+  val delete: route -> (Request.http_request -> bytes) -> route_handler
+  val option: route -> (Request.http_request -> bytes) -> route_handler
+  val post: route -> (Request.http_request -> bytes) -> route_handler
+  val head: route -> (Request.http_request -> bytes) -> route_handler
+  val get: route -> (Request.http_request -> bytes) -> route_handler
+  val put: route -> (Request.http_request -> bytes) -> route_handler
+
+  val string_of_route: route -> string
+end
+= struct
+  type route_component = 
+    | Const of string
+    | Parameter of string
+    | Any
+  
+  type route = route_component list
+  type route_handler = Request.http_method * route * (Request.http_request -> bytes)
+  type router = route_handler list
+  
+  let string_of_route_component = function
+  | Const s -> s
+  | Parameter p -> p
+  | Any -> "*"
+;;
+
+  let string_of_route route = route |> List.map (string_of_route_component) |> String.concat "/"
+ 
+  let make_router = []
+
+  let make_route route_component = route_component
+
+  let add_route route router = route::router
+
+  let to_route_components route = route
+  let connect route completion = (Request.CONNECT, route, completion)
+  let delete route completion = (Request.DELETE, route, completion)
+  let option route completion = (Request.OPTIONS, route, completion)
+  let post route completion = (Request.POST, route, completion)
+  let head route completion = (Request.HEAD, route, completion)
+  let get route completion = (Request.GET, route, completion)
+  let put route completion = (Request.PUT, route, completion)
+
+
+end
 
 
 module Response : sig
