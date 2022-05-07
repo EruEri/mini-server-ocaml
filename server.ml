@@ -20,12 +20,12 @@ let default_response socket () =
   let file = open_in_bin "index.html" in
   let file_bytes = really_input_string file (file |> in_channel_length) |> String.to_bytes in
   let protocol = HTTP_1_1 in
-  let status_line = protocol, Http.ok, "OK" in
+  let status_line = protocol, Http.Response.ok, "OK" in
   let date = "Date", Http.current_date_http_format in
   let content_length = "Content-Length", (file_bytes |> Bytes.length |> string_of_int)  in
   let content_type = "Content-Type", "text/html" in
-  let (response: http_response) = {status_line = status_line; headers = date::content_type::content_length::[]; body = file_bytes } in
-  let bytes_reposne = Http.bytes_of_http_response response in
+  let (response: Http. Response.http_response) = Http.Response.create status_line [date; content_length; content_type] file_bytes  in
+  let bytes_reposne = Http.Response.to_bytes response in
   let read = Unix.send socket (bytes_reposne) 0 ((bytes_reposne |> Bytes.length)) ([]) in
   read
 
@@ -37,16 +37,16 @@ let run () =
   let socket = Unix.socket ~cloexec:true Unix.PF_INET Unix.SOCK_STREAM 0 in
   let server_sockadrr =  (ADDR_INET (local_ip |> Option.get , 8080) ) in
   Unix.bind socket server_sockadrr;
-  Unix.listen socket 2;
+  Unix.listen socket 1;
 
   let _ = Sys.signal sigint (Sys.Signal_handle (fun signal -> close socket; print_endline "\nServer stop listening"; exit 0) ) in
   print_endline (Printf.sprintf "Ocaml Start listening at %s ..."  (string_of_sockadrr server_sockadrr));
   let rec listening () = 
         let file_client, sockadress = Unix.accept socket in
         print_endline ("New connection from "^(sockadress |> string_of_sockadrr));
-        match Http.http_request_of_request_bytes_result (read_response file_client ()) with
+        match Http.Request.http_request_of_request_bytes_result (read_response file_client ()) with
         | Error e -> ()
-        | Ok http_request -> print_endline (Http.string_of_http_request http_request);
+        | Ok http_request -> print_endline (Http.Request.string_of_http_request http_request);
         let bytes_send = default_response file_client () in
         
         if bytes_send == -1 then print_endline "Error response";
