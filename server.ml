@@ -44,9 +44,9 @@ let run () =
   let rec listening () = 
         let file_client, sockadress = Unix.accept socket in
         print_endline ("New connection from "^(sockadress |> string_of_sockadrr));
-        (read_response file_client ())
-        |> Http.parse_request
-        |> List.iter (print_endline);
+        match Http.http_request_of_request_bytes_result (read_response file_client ()) with
+        | Error e -> ()
+        | Ok http_request -> print_endline (Http.string_of_http_request http_request);
         let bytes_send = default_response file_client () in
         
         if bytes_send == -1 then print_endline "Error response";

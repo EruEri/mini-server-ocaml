@@ -10,7 +10,7 @@
 CAMLprim value caml_read_response(value file_descriptor, value unit){
     int fd = Int_val(file_descriptor);
     printf("file descriptor: %d\n", fd);
-    size_t read_cst = 1024;
+    size_t read_cst = 256;
     size_t offset = 0;
     ssize_t read = 0;
 
@@ -23,13 +23,11 @@ CAMLprim value caml_read_response(value file_descriptor, value unit){
             printf("Recv error\n");
             exit(1);
         case 0:
-            printf("Disconnected");
+            printf("Disconnected\n");
             break;
         default:
             offset += read;
-            buffer = realloc(buffer, read + offset);
-            printf("Read %lu\n", read);
-            
+            buffer = realloc(buffer, read + offset);            
         }
     }  
     value str = caml_copy_string_of_os(buffer);
