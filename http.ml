@@ -84,7 +84,8 @@ module rec Request : sig
   val http_method_of_string: string -> http_method
   val http_method_of_string_opt: string -> http_method option
   val string_of_http_request: http_request -> string
-
+  val get_route_opt: Router.router -> http_request -> Router.route_handler option
+  val get_parameter_opt: string -> Router.route -> http_request -> string option
   val http_method: http_request -> http_method
   val path: http_request -> string
 end
@@ -120,7 +121,7 @@ end
   let http_method request = let (meth, _, _) = request.status_line in meth
   let path request = let _, path, _ = request.status_line in path
   let get_parameter_opt (parameter: string) (route: Router.route) request = 
-    let raw_components = request |> Request.path |> String.split_on_char '/' in
+    let raw_components = request |> Request.path |> String.split_on_char '/' |> List.filter (fun s -> s <> "" && s <> " " && s <> "\n") in
     let route_components = route |> Router.to_route_components in
     if List.compare_lengths raw_components route_components <> 0 then None
     else
@@ -140,6 +141,30 @@ end
         |> List.map (fun (component_opt, raw_components) -> component_opt |> Option.get, raw_components )
         |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = raw_component then Some(raw_component) else None | _ -> None)
   ;;
+
+  let is_matched_route (route: Router.route) (request: http_request) =
+    let raw_components = request |> Request.path |> String.split_on_char '/' |> List.filter (fun s -> s <> "" && s <> " " && s <> "\n") in
+    let route_components = route |> Router.to_route_components in
+    if List.compare_lengths raw_components route_components <> 0 then false
+    else 
+      raw_components 
+      |> List.mapi ( fun i raw_component -> 
+        let route_component = List.nth route_components i in 
+        match route_component with
+        | Router.Const c -> if c <> raw_component then (None, raw_component) else (Some( route_component), raw_component)
+        | _ -> (Some( route_component), raw_component)
+        )
+        |> List.exists (fun (component_opt, _) -> component_opt |> Option.is_none )
+        |> Bool.not
+    ;;
+  let get_route_opt (router: Router.router) (request: Request.http_request) =
+    router 
+    |> Router.to_route_handler_list
+    (* |> List.map (fun handle -> print_endline ( handle |> Router.route_of_route_handler |> Router.string_of_route); handle) *)
+    |> List.filter (fun handler -> (handler |> Router.http_method_of_route_handler) = (request |> Request.http_method))
+    
+    |> List.find_map (fun handle -> let route = handle |> Router.route_of_route_handler in if request |> is_matched_route route then Some handle else None)
+  ;; 
 
   let http_method_of_string = function
     | "CONNECT" -> CONNECT
@@ -251,15 +276,18 @@ and Router : sig
   val make_router: router
   val make_route: route_component list -> route
   val add_route: route_handler -> router -> router
-
+  val http_method_of_route_handler: route_handler -> Request.http_method
+  val route_of_route_handler: route_handler -> route
+  val handler_route_handler: route_handler -> (Request.http_request * route -> Response.http_response)
+  val to_route_handler_list: router -> route_handler list
   val to_route_components: route -> route_component list
-  val connect: route -> (Request.http_request -> bytes) -> route_handler
-  val delete: route -> (Request.http_request -> bytes) -> route_handler
-  val option: route -> (Request.http_request -> bytes) -> route_handler
-  val post: route -> (Request.http_request -> bytes) -> route_handler
-  val head: route -> (Request.http_request -> bytes) -> route_handler
-  val get: route -> (Request.http_request -> bytes) -> route_handler
-  val put: route -> (Request.http_request -> bytes) -> route_handler
+  val connect: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val delete: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val option: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val post: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val head: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val get: route -> (Request.http_request * route -> Response.http_response) -> route_handler
+  val put: route -> (Request.http_request * route -> Response.http_response) -> route_handler
 
   val string_of_route: route -> string
 end
@@ -270,7 +298,7 @@ end
     | Any
   
   type route = route_component list
-  type route_handler = Request.http_method * route * (Request.http_request -> bytes)
+  type route_handler = Request.http_method * route * (Request.http_request * route -> Response.http_response)
   type router = route_handler list
   
   let string_of_route_component = function
@@ -282,11 +310,12 @@ end
   let string_of_route route = route |> List.map (string_of_route_component) |> String.concat "/"
  
   let make_router = []
-
   let make_route route_component = route_component
-
   let add_route route router = route::router
-
+  let http_method_of_route_handler route_handler = let (meth, _, _) = route_handler in meth
+  let route_of_route_handler route_handler = let (_, route, _) = route_handler in route
+  let handler_route_handler route_handler = let (_, _, handler) = route_handler in handler
+  let to_route_handler_list router = router
   let to_route_components route = route
   let connect route completion = (Request.CONNECT, route, completion)
   let delete route completion = (Request.DELETE, route, completion)
@@ -298,9 +327,7 @@ end
 
 
 end
-
-
-module Response : sig
+and Response : sig
   type http_response
 
   val ok: int
