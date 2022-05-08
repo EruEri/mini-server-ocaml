@@ -139,7 +139,7 @@ end
       else
         mapped_components
         |> List.map (fun (component_opt, raw_components) -> component_opt |> Option.get, raw_components )
-        |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = raw_component then Some(raw_component) else None | _ -> None)
+        |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = parameter then Some(raw_component) else None | _ -> None)
   ;;
 
   let is_matched_route (route: Router.route) (request: http_request) =
