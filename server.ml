@@ -31,7 +31,7 @@ let default_response socket () =
 
 let router = 
   Http.Router.make_router
-  |> Http.Router.add_route (Http.Router.get (Http.Router.make_route []) (fun _ -> 
+  |> Http.Router.add_route (Http.Router.get (Http.Router.make_route []) (fun (request, route) -> 
     let file = open_in_bin "static/index.html" in
     let file_bytes = really_input_string file (file |> in_channel_length) |> String.to_bytes in
     let protocol = HTTP_1_1 in
@@ -44,6 +44,7 @@ let router =
     ) )
   |> Http.Router.add_route (Http.Router.get (Http.Router.make_route [Router.Const "Hello"; Router.Parameter "name"])  (fun (request, route) -> 
     let name = request |> Request.get_parameter_opt "name" route |> Option.value ~default:"Name no found" in
+    request |> Request.get_query_value_opt "key" route |> Option.iter (Printf.printf "Key = %s\n");
     let date = "Date", Http.current_date_http_format in
     let content_length = "Content-Length", (name |> String.length |> string_of_int)  in
     let content_type = "Content-Type", "text/html" in
@@ -79,6 +80,7 @@ let run (route: Http.Router.router) () =
             ()
             )
           ;
+          Unix.close file_client;
         listening () in
   listening ()
 ;;

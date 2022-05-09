@@ -86,7 +86,7 @@ module rec Request : sig
   val string_of_http_request: http_request -> string
   val get_route_opt: Router.router -> http_request -> Router.route_handler option
   val get_parameter_opt: string -> Router.route -> http_request -> string option
-  val get_query_value_opt: string -> http_request -> string option
+  val get_query_value_opt: string -> Router.route -> http_request -> string option
   val http_method: http_request -> http_method
   val path: http_request -> string
 end
@@ -143,10 +143,19 @@ end
         mapped_components
         |> List.map (fun (component_opt, raw_components) -> component_opt |> Option.get, raw_components )
         |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = parameter then Some(raw_component) else None | _ -> None)
+        |> Option.map (fun par -> par |> String.split_on_char '?' |> List.hd)
   ;;
 
-  let get_query_value_opt key request =
+  let get_query_value_opt key route request =
     if request |> http_method <> GET then None
+    else if route = [] then match request |> Request.path |> String.split_on_char '?' with
+      | _::keys_values::[] -> (
+        keys_values 
+        |> String.split_on_char '&'
+        |> List.filter_map (fun kv -> match kv |> String.split_on_char '=' with key::value::[] -> Some (key, value) | _ -> None)
+        |> List.assoc_opt key
+    )
+    | _ -> None
     else
       let raw_components = raw_components request in
       match List.nth_opt (raw_components |> List.rev) 0 with
@@ -154,8 +163,9 @@ end
       | Some last -> begin
         match last |> String.split_on_char '?' with
         | _::keys_values::[] -> (
-            keys_values 
+            keys_values
             |> String.split_on_char '&'
+            |> List.map (fun key -> (Printf.printf "%s" key); key) 
             |> List.filter_map (fun kv -> match kv |> String.split_on_char '=' with key::value::[] -> Some (key, value) | _ -> None)
             |> List.assoc_opt key
         )
