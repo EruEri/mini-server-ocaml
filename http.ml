@@ -86,6 +86,7 @@ module rec Request : sig
   val string_of_http_request: http_request -> string
   val get_route_opt: Router.router -> http_request -> Router.route_handler option
   val get_parameter_opt: string -> Router.route -> http_request -> string option
+  val get_query_value_opt: string -> http_request -> string option
   val http_method: http_request -> http_method
   val path: http_request -> string
 end
@@ -120,8 +121,10 @@ end
   let double_crlf_regex = Str.regexp "\r\n\r\n";;
   let http_method request = let (meth, _, _) = request.status_line in meth
   let path request = let _, path, _ = request.status_line in path
+
+  let raw_components request = request |> Request.path |> String.split_on_char '/' |> List.filter (fun s -> s <> "" && s <> " " && s <> "\n")
   let get_parameter_opt (parameter: string) (route: Router.route) request = 
-    let raw_components = request |> Request.path |> String.split_on_char '/' |> List.filter (fun s -> s <> "" && s <> " " && s <> "\n") in
+    let raw_components = raw_components request in
     let route_components = route |> Router.to_route_components in
     if List.compare_lengths raw_components route_components <> 0 then None
     else
@@ -142,8 +145,26 @@ end
         |> List.find_map (fun (component, raw_component) -> match component with Router.Parameter s -> if s = parameter then Some(raw_component) else None | _ -> None)
   ;;
 
+  let get_query_value_opt key request =
+    if request |> http_method <> GET then None
+    else
+      let raw_components = raw_components request in
+      match List.nth_opt (raw_components |> List.rev) 0 with
+      | None -> None
+      | Some last -> begin
+        match last |> String.split_on_char '?' with
+        | _::keys_values::[] -> (
+            keys_values 
+            |> String.split_on_char '&'
+            |> List.filter_map (fun kv -> match kv |> String.split_on_char '=' with key::value::[] -> Some (key, value) | _ -> None)
+            |> List.assoc_opt key
+        )
+        | _ -> None
+      end
+  ;;
+
   let is_matched_route (route: Router.route) (request: http_request) =
-    let raw_components = request |> Request.path |> String.split_on_char '/' |> List.filter (fun s -> s <> "" && s <> " " && s <> "\n") in
+    let raw_components = raw_components request in
     let route_components = route |> Router.to_route_components in
     if List.compare_lengths raw_components route_components <> 0 then false
     else 
@@ -303,7 +324,7 @@ end
   
   let string_of_route_component = function
   | Const s -> s
-  | Parameter p -> p
+  | Parameter p -> ":"^p
   | Any -> "*"
 ;;
 
